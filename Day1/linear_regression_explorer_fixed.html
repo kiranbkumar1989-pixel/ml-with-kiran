@@ -1,0 +1,165 @@
+
+<h2 class="sr-only">Interactive linear regression explorer — drag sliders to adjust slope and intercept and see how the line fits the data</h2>
+<div style="padding:1rem 0;">
+  <div style="font-size:11px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-tertiary);margin-bottom:1rem;">Live linear regression explorer</div>
+
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:.75rem;">
+    <span style="font-size:13px;color:var(--color-text-secondary);width:80px;flex-shrink:0;">Slope (w)</span>
+    <input type="range" min="50" max="300" value="150" step="1" id="sl-w" style="flex:1;">
+    <span style="font-size:13px;font-weight:500;color:var(--color-text-primary);min-width:36px;text-align:right;" id="out-w">150</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:1.25rem;">
+    <span style="font-size:13px;color:var(--color-text-secondary);width:80px;flex-shrink:0;">Intercept (b)</span>
+    <input type="range" min="-100000" max="100000" value="0" step="1000" id="sl-b" style="flex:1;">
+    <span style="font-size:13px;font-weight:500;color:var(--color-text-primary);min-width:48px;text-align:right;" id="out-b">0</span>
+  </div>
+
+  <canvas id="rgr-canvas" width="640" height="260" style="width:100%;height:260px;border-radius:8px;border:0.5px solid var(--color-border-tertiary);"></canvas>
+
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:1rem;">
+    <div style="background:var(--color-background-secondary);border-radius:8px;padding:.75rem 1rem;">
+      <div style="font-size:11px;color:var(--color-text-tertiary);margin-bottom:4px;">Your MSE</div>
+      <div style="font-size:18px;font-weight:500;color:var(--color-text-primary);" id="your-mse">—</div>
+    </div>
+    <div style="background:var(--color-background-secondary);border-radius:8px;padding:.75rem 1rem;">
+      <div style="font-size:11px;color:var(--color-text-tertiary);margin-bottom:4px;">Best possible MSE</div>
+      <div style="font-size:18px;font-weight:500;color:var(--color-text-primary);" id="best-mse">—</div>
+    </div>
+    <div style="background:var(--color-background-secondary);border-radius:8px;padding:.75rem 1rem;">
+      <div style="font-size:11px;color:var(--color-text-tertiary);margin-bottom:4px;">Gap</div>
+      <div style="font-size:18px;font-weight:500;" id="gap-mse">—</div>
+    </div>
+  </div>
+
+  <div style="margin-top:1rem;font-size:12px;color:var(--color-text-tertiary);display:flex;gap:16px;flex-wrap:wrap;">
+    <span><span style="display:inline-block;width:12px;height:3px;background:#D85A30;vertical-align:middle;border-radius:2px;margin-right:4px;"></span>your line</span>
+    <span><span style="display:inline-block;width:12px;height:2px;background:#378ADD;vertical-align:middle;border-radius:2px;margin-right:4px;border-top:2px dashed #378ADD;"></span>best fit</span>
+    <span><span style="display:inline-block;width:8px;height:8px;background:#1D9E75;border-radius:50%;vertical-align:middle;margin-right:4px;"></span>data points</span>
+  </div>
+</div>
+
+<script>
+(function(){
+  function seededRand(s){var x=Math.sin(s+1)*10000;return x-Math.floor(x);}
+  var N=40,Xd=[],yd=[];
+  for(var i=0;i<N;i++){
+    var sz=Math.floor(seededRand(i)*3000)+500;
+    var noise=(seededRand(i+50)-0.5)*60000;
+    Xd.push(sz);
+    yd.push(sz*150+noise);
+  }
+  var xMean=Xd.reduce(function(a,b){return a+b;})/N;
+  var yMean=yd.reduce(function(a,b){return a+b;})/N;
+  var num=0,den=0;
+  for(var i=0;i<N;i++){num+=(Xd[i]-xMean)*(yd[i]-yMean);den+=(Xd[i]-xMean)*(Xd[i]-xMean);}
+  var bestW=num/den, bestB=yMean-bestW*xMean;
+  var bestMSE=0;
+  for(var i=0;i<N;i++){var e=yd[i]-(bestW*Xd[i]+bestB);bestMSE+=e*e;}
+  bestMSE/=N;
+
+  function fmt(n){
+    if(n>=1e9)return(n/1e9).toFixed(1)+'B';
+    if(n>=1e6)return(n/1e6).toFixed(2)+'M';
+    if(n>=1e3)return(n/1e3).toFixed(1)+'K';
+    return Math.round(n).toString();
+  }
+
+  document.getElementById('best-mse').textContent=fmt(bestMSE);
+
+  var canvas=document.getElementById('rgr-canvas');
+  var ctx=canvas.getContext('2d');
+
+  var PAD={top:20,right:20,bottom:40,left:60};
+  var xMin=400,xMax=3600,yMin=-50000,yMax=650000;
+
+  function toCanvas(x,y){
+    var W=canvas.width,H=canvas.height;
+    var cx=PAD.left+(x-xMin)/(xMax-xMin)*(W-PAD.left-PAD.right);
+    var cy=H-PAD.bottom-(y-yMin)/(yMax-yMin)*(H-PAD.top-PAD.bottom);
+    return[cx,cy];
+  }
+
+  function isDark(){
+    return window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+
+  function draw(w,b){
+    var W=canvas.width,H=canvas.height;
+    var dark=isDark();
+    var bg=dark?'#1a1a1a':'#ffffff';
+    var gridCol=dark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.06)';
+    var axisCol=dark?'rgba(255,255,255,0.25)':'rgba(0,0,0,0.25)';
+    var txtCol=dark?'rgba(255,255,255,0.5)':'rgba(0,0,0,0.45)';
+
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle=bg;
+    ctx.fillRect(0,0,W,H);
+
+    ctx.strokeStyle=gridCol;ctx.lineWidth=0.5;
+    var yTicks=[0,100000,200000,300000,400000,500000,600000];
+    yTicks.forEach(function(yv){
+      var p=toCanvas(xMin,yv);
+      ctx.beginPath();ctx.moveTo(PAD.left,p[1]);ctx.lineTo(W-PAD.right,p[1]);ctx.stroke();
+      ctx.fillStyle=txtCol;ctx.font='10px sans-serif';ctx.textAlign='right';
+      ctx.fillText('$'+(yv/1000).toFixed(0)+'K',PAD.left-6,p[1]+4);
+    });
+    var xTicks=[500,1000,1500,2000,2500,3000,3500];
+    xTicks.forEach(function(xv){
+      var p=toCanvas(xv,yMin);
+      ctx.beginPath();ctx.moveTo(p[0],PAD.top);ctx.lineTo(p[0],H-PAD.bottom);ctx.stroke();
+      ctx.fillStyle=txtCol;ctx.font='10px sans-serif';ctx.textAlign='center';
+      ctx.fillText(xv,p[0],H-PAD.bottom+14);
+    });
+
+    ctx.fillStyle=txtCol;ctx.font='11px sans-serif';ctx.textAlign='center';
+    ctx.fillText('house size (sq ft)',W/2,H-4);
+    ctx.save();ctx.translate(14,H/2);ctx.rotate(-Math.PI/2);
+    ctx.fillText('price ($)',0,0);ctx.restore();
+
+    var p1=toCanvas(xMin,bestW*xMin+bestB);
+    var p2=toCanvas(xMax,bestW*xMax+bestB);
+    ctx.strokeStyle='#378ADD';ctx.lineWidth=1.5;ctx.setLineDash([6,4]);
+    ctx.beginPath();ctx.moveTo(p1[0],p1[1]);ctx.lineTo(p2[0],p2[1]);ctx.stroke();
+    ctx.setLineDash([]);
+
+    var q1=toCanvas(xMin,w*xMin+b);
+    var q2=toCanvas(xMax,w*xMax+b);
+    ctx.strokeStyle='#D85A30';ctx.lineWidth=2.5;
+    ctx.beginPath();ctx.moveTo(q1[0],q1[1]);ctx.lineTo(q2[0],q2[1]);ctx.stroke();
+
+    for(var i=0;i<N;i++){
+      var pt=toCanvas(Xd[i],yd[i]);
+      ctx.beginPath();ctx.arc(pt[0],pt[1],4,0,Math.PI*2);
+      ctx.fillStyle='#1D9E75';ctx.fill();
+    }
+  }
+
+  function update(){
+    var w=+document.getElementById('sl-w').value;
+    var b=+document.getElementById('sl-b').value;
+    document.getElementById('out-w').textContent=w;
+    document.getElementById('out-b').textContent='$'+(b>=0?'+':'')+fmt(b);
+    draw(w,b);
+    var mse=0;
+    for(var i=0;i<N;i++){var e=yd[i]-(w*Xd[i]+b);mse+=e*e;}
+    mse/=N;
+    document.getElementById('your-mse').textContent=fmt(mse);
+    var gap=mse-bestMSE;
+    var el=document.getElementById('gap-mse');
+    el.textContent=(gap>0?'+':'')+fmt(gap);
+    el.style.color=gap<bestMSE*0.1?'#1D9E75':'var(--color-text-primary)';
+  }
+
+  document.getElementById('sl-w').addEventListener('input',update);
+  document.getElementById('sl-b').addEventListener('input',update);
+
+  var ro=new ResizeObserver(function(){
+    canvas.width=canvas.offsetWidth*window.devicePixelRatio||640;
+    canvas.height=260*window.devicePixelRatio||260;
+    ctx.scale(window.devicePixelRatio,window.devicePixelRatio);
+    update();
+  });
+  ro.observe(canvas);
+  update();
+})();
+</script>
