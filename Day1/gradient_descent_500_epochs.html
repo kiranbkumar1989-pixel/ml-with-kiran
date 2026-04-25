@@ -1,0 +1,240 @@
+
+<h2 class="sr-only">Gradient descent live demo with 500 epochs — watch the loss curve fall as the model learns</h2>
+
+<div style="font-size:11px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-tertiary);margin-bottom:1.25rem;padding-top:1rem;">Gradient descent — 500 epochs</div>
+
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:.5rem;">
+  <span style="font-size:13px;color:var(--color-text-secondary);width:110px;flex-shrink:0;">Learning rate</span>
+  <input type="range" min="0" max="4" value="2" step="1" id="sl-lr" style="flex:1;">
+  <span style="font-size:13px;font-weight:500;color:var(--color-text-primary);min-width:48px;text-align:right;" id="out-lr">0.01</span>
+</div>
+
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:1rem;">
+  <span style="font-size:13px;color:var(--color-text-secondary);width:110px;flex-shrink:0;">Speed</span>
+  <input type="range" min="1" max="5" value="3" step="1" id="sl-spd" style="flex:1;">
+  <span style="font-size:13px;font-weight:500;color:var(--color-text-primary);min-width:48px;text-align:right;" id="out-spd">5 ep/f</span>
+</div>
+
+<canvas id="gd-c" style="width:100%;height:260px;display:block;border-radius:8px;border:0.5px solid var(--color-border-tertiary);margin-bottom:1rem;"></canvas>
+
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:1rem;">
+  <div style="background:var(--color-background-secondary);border-radius:8px;padding:.65rem .9rem;">
+    <div style="font-size:11px;color:var(--color-text-tertiary);margin-bottom:3px;">Epoch</div>
+    <div style="font-size:18px;font-weight:500;color:var(--color-text-primary);" id="ep-out">0</div>
+  </div>
+  <div style="background:var(--color-background-secondary);border-radius:8px;padding:.65rem .9rem;">
+    <div style="font-size:11px;color:var(--color-text-tertiary);margin-bottom:3px;">Loss</div>
+    <div style="font-size:18px;font-weight:500;color:var(--color-text-primary);" id="loss-out">—</div>
+  </div>
+  <div style="background:var(--color-background-secondary);border-radius:8px;padding:.65rem .9rem;">
+    <div style="font-size:11px;color:var(--color-text-tertiary);margin-bottom:3px;">Weight w</div>
+    <div style="font-size:18px;font-weight:500;color:var(--color-text-primary);" id="w-out">0</div>
+  </div>
+  <div style="background:var(--color-background-secondary);border-radius:8px;padding:.65rem .9rem;">
+    <div style="font-size:11px;color:var(--color-text-tertiary);margin-bottom:3px;">Status</div>
+    <div style="font-size:13px;font-weight:500;color:var(--color-text-secondary);" id="status-out">ready</div>
+  </div>
+</div>
+
+<div style="display:flex;gap:8px;flex-wrap:wrap;">
+  <button id="btn-run" style="font-size:13px;padding:6px 18px;">Run</button>
+  <button id="btn-reset" style="font-size:13px;padding:6px 18px;">Reset</button>
+</div>
+
+<div style="display:flex;gap:20px;margin-top:1rem;flex-wrap:wrap;">
+  <span style="font-size:12px;color:var(--color-text-tertiary);display:flex;align-items:center;gap:6px;">
+    <span style="display:inline-block;width:20px;height:2px;background:#1D9E75;border-radius:2px;"></span>loss curve
+  </span>
+  <span style="font-size:12px;color:var(--color-text-tertiary);display:flex;align-items:center;gap:6px;">
+    <span style="display:inline-block;width:10px;height:10px;background:#D85A30;border-radius:50%;"></span>current position
+  </span>
+  <span style="font-size:12px;color:var(--color-text-tertiary);display:flex;align-items:center;gap:6px;">
+    <span style="display:inline-block;width:20px;height:1px;border-top:1.5px dashed #378ADD;"></span>minimum
+  </span>
+</div>
+
+<script>
+(function(){
+  var LR_OPTS  = [0.001, 0.005, 0.01, 0.05, 0.1];
+  var LR_LABEL = ['0.001','0.005','0.01','0.05','0.1'];
+  var SPD_OPTS = [1, 2, 5, 10, 20];
+  var SPD_LABEL= ['1 ep/f','2 ep/f','5 ep/f','10 ep/f','20 ep/f'];
+  var EPOCHS   = 500;
+
+  function rand(s){var x=Math.sin(s+1)*43758.5453;return x-Math.floor(x);}
+  var N=50, Xr=[], Yr=[];
+  for(var i=0;i<N;i++){
+    var x=rand(i)*3000+500;
+    Xr.push(x);
+    Yr.push(x*150+(rand(i+100)-0.5)*60000);
+  }
+  var xMu=Xr.reduce(function(a,b){return a+b;})/N;
+  var xSd=Math.sqrt(Xr.reduce(function(a,v){return a+(v-xMu)*(v-xMu);},0)/N);
+  var X=Xr.map(function(v){return (v-xMu)/xSd;});
+  var Y=Yr;
+
+  function simulate(lr){
+    var w=0,b=0,losses=[],ws=[],bs=[];
+    for(var e=0;e<EPOCHS;e++){
+      var loss=0,dw=0,db=0;
+      for(var i=0;i<N;i++){
+        var err=w*X[i]+b-Y[i];
+        loss+=err*err; dw+=err*X[i]; db+=err;
+      }
+      loss/=N; dw=2*dw/N; db=2*db/N;
+      if(!isFinite(loss)){
+        losses.push(null); ws.push(w); bs.push(b);
+        for(var j=e+1;j<EPOCHS;j++){losses.push(null);ws.push(w);bs.push(b);}
+        break;
+      }
+      losses.push(loss); ws.push(w); bs.push(b);
+      w-=lr*dw; b-=lr*db;
+    }
+    return {losses:losses, ws:ws, bs:bs};
+  }
+
+  var canvas=document.getElementById('gd-c');
+  var ctx=canvas.getContext('2d');
+  var data=null, step=0, animId=null, running=false;
+
+  function fmt(v){
+    if(v===null||!isFinite(v))return 'diverged';
+    if(v>=1e9)return(v/1e9).toFixed(1)+'B';
+    if(v>=1e6)return(v/1e6).toFixed(2)+'M';
+    if(v>=1e3)return(v/1e3).toFixed(1)+'K';
+    return Math.round(v)+'';
+  }
+
+  function draw(){
+    var dpr=window.devicePixelRatio||1;
+    var CW=canvas.clientWidth, CH=canvas.clientHeight;
+    if(canvas.width!==Math.round(CW*dpr)){
+      canvas.width=Math.round(CW*dpr);
+      canvas.height=Math.round(CH*dpr);
+      ctx.scale(dpr,dpr);
+    }
+    var W=CW, H=CH;
+    var dark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle=dark?'#1a1a1a':'#fff';
+    ctx.fillRect(0,0,W,H);
+
+    var P={t:16,r:16,b:36,l:68};
+    var pw=W-P.l-P.r, ph=H-P.t-P.b;
+    var valid=data.losses.filter(function(v){return v!==null&&isFinite(v);});
+    if(!valid.length)return;
+    var maxL=valid[0], minL=Math.min.apply(null,valid);
+    var rng=maxL-minL||1;
+
+    var gc=dark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.05)';
+    var tc=dark?'rgba(255,255,255,0.4)':'rgba(0,0,0,0.38)';
+
+    ctx.strokeStyle=gc; ctx.lineWidth=0.5;
+    [0,0.25,0.5,0.75,1].forEach(function(f){
+      var yv=maxL-f*rng;
+      var py=P.t+ph*f;
+      ctx.beginPath();ctx.moveTo(P.l,py);ctx.lineTo(W-P.r,py);ctx.stroke();
+      ctx.fillStyle=tc;ctx.font='10px sans-serif';ctx.textAlign='right';
+      ctx.fillText(fmt(yv),P.l-4,py+4);
+    });
+
+    [0,100,200,300,400,500].forEach(function(ep){
+      var px=P.l+(ep/EPOCHS)*pw;
+      ctx.fillStyle=tc;ctx.font='10px sans-serif';ctx.textAlign='center';
+      ctx.fillText(ep,px,H-6);
+    });
+    ctx.fillStyle=tc;ctx.font='10px sans-serif';ctx.textAlign='center';
+    ctx.fillText('epoch',W/2,H-0);
+
+    var minY=P.t+ph*(1-(minL-minL)/rng);
+    ctx.strokeStyle='#378ADD';ctx.lineWidth=1;ctx.setLineDash([5,4]);
+    ctx.beginPath();ctx.moveTo(P.l,minY);ctx.lineTo(W-P.r,minY);ctx.stroke();
+    ctx.setLineDash([]);
+
+    var pts=[];
+    for(var i=0;i<=step&&i<EPOCHS;i++){
+      var v=data.losses[i];
+      if(v===null||!isFinite(v))break;
+      pts.push([
+        P.l+(i/EPOCHS)*pw,
+        P.t+ph*(1-(v-minL)/rng)
+      ]);
+    }
+    if(pts.length>1){
+      ctx.strokeStyle='#1D9E75';ctx.lineWidth=2.5;
+      ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);
+      for(var i=1;i<pts.length;i++)ctx.lineTo(pts[i][0],pts[i][1]);
+      ctx.stroke();
+    }
+    if(pts.length){
+      var lp=pts[pts.length-1];
+      ctx.beginPath();ctx.arc(lp[0],lp[1],6,0,Math.PI*2);
+      ctx.fillStyle='#D85A30';ctx.fill();
+    }
+  }
+
+  function updateStats(){
+    document.getElementById('ep-out').textContent=step;
+    var v=data.losses[step];
+    document.getElementById('loss-out').textContent=fmt(v);
+    document.getElementById('w-out').textContent=
+      isFinite(data.ws[step])?data.ws[step].toFixed(1):'—';
+  }
+
+  function setStatus(s,color){
+    var el=document.getElementById('status-out');
+    el.textContent=s; el.style.color=color||'var(--color-text-secondary)';
+  }
+
+  function spd(){return SPD_OPTS[+document.getElementById('sl-spd').value-1];}
+
+  function tick(){
+    var s=spd();
+    for(var k=0;k<s;k++){
+      if(step>=EPOCHS-1||data.losses[step]===null){
+        running=false;
+        document.getElementById('btn-run').textContent='Run';
+        var done=data.losses[step]===null;
+        setStatus(done?'diverged':'converged!', done?'#D85A30':'#1D9E75');
+        draw(); updateStats(); return;
+      }
+      step++;
+    }
+    draw(); updateStats();
+    animId=requestAnimationFrame(tick);
+  }
+
+  function reset(){
+    if(animId){cancelAnimationFrame(animId);animId=null;}
+    running=false; step=0;
+    var lr=LR_OPTS[+document.getElementById('sl-lr').value];
+    data=simulate(lr);
+    draw(); updateStats();
+    setStatus('ready');
+    document.getElementById('btn-run').textContent='Run';
+  }
+
+  document.getElementById('btn-run').addEventListener('click',function(){
+    if(running){
+      cancelAnimationFrame(animId);animId=null;running=false;
+      this.textContent='Run'; setStatus('paused');
+    } else {
+      if(step>=EPOCHS-1)reset();
+      running=true; this.textContent='Pause';
+      setStatus('learning…','#1D9E75'); tick();
+    }
+  });
+  document.getElementById('btn-reset').addEventListener('click',reset);
+  document.getElementById('sl-lr').addEventListener('input',function(){
+    document.getElementById('out-lr').textContent=LR_LABEL[+this.value];
+    reset();
+  });
+  document.getElementById('sl-spd').addEventListener('input',function(){
+    document.getElementById('out-spd').textContent=SPD_LABEL[+this.value-1];
+  });
+
+  var ro=new ResizeObserver(function(){draw();});
+  ro.observe(canvas);
+  reset();
+})();
+</script>
